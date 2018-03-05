@@ -1,30 +1,26 @@
-fn is_cons(c: char) -> bool {
-    match c {
-        'a' | 'e' | 'i' | 'o' | 'u' => false,
-        'y' => false,
-        _   => true,
+    fn is_cons(s: &[u8], i: usize) -> bool {
+        match s[i] {
+            b'a' | b'e' | b'i' | b'o' | b'u' => false,
+            b'y' => if i == 0 { true } else { !is_cons(s, i-1) },
+            _   => true,
+        }
     }
-}
 
 pub fn main() { 
     
-    let test = "cbdfgacaca";
-    let mut s = test.trim_left_matches(is_cons);
+    let test = "ccccccacacaca";
+    let buffer = test.as_bytes();
+    let j = test.len();
     let mut n = 0;
+    let mut i = 0;
+    let mut next = (i..j).find(|&i| !is_cons(&buffer, i));
 
-    loop {
-        println!("{}", s);
-
-        s = s.trim_left_matches(|c| !is_cons(c));
-
-        if s.len() > 0 {
-            n += 1;
-        } else { 
-            println!("{}", n);
-            break;
-        }
-        println!("{}", s);
-
-        s = s.trim_left_matches(|c| is_cons(c));
+    while i < j {
+        if next.is_none() { break; } else { i = next.unwrap(); }
+        next = (i..j).find(|&i| is_cons(&buffer, i));
+        if next.is_none() { break; } else { n += 1; i = next.unwrap(); }
+        next = (i..j).find(|&i| !is_cons(&buffer, i));
     }
+    
+    println!("{}", n);
 }
