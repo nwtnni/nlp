@@ -3,4 +3,11 @@ name = "nlp"
 version = "0.1.0"
 authors = ["Newton Ni <nwtnni@gmail.com>"]
 
+[dev-dependencies]
+criterion = "0.2"
+
 [dependencies]
+
+[[bench]]
+name = "porter"
+harness = false
