@@ -1,26 +1,30 @@
-pub struct Stemmer {
+struct Porter {
     j: usize,
     k: usize,
-    buffer: Vec<u8>,
+    b: Vec<u8>,
 }
 
-impl Stemmer {
-    pub fn new(s: &str) -> Result<Self, String> {
+impl Porter {
+    pub fn stem(s: &str) -> Result<String, String> {
+        Self::new(s).map(|stemmer| stemmer.execute())
+    }
+
+    fn new(s: &str) -> Result<Self, String> {
         if s.is_ascii() {
-            Ok(Stemmer {
-                buffer: s.to_lowercase().into_bytes(),
+            Ok(Porter {
+                b: s.to_lowercase().into_bytes(),
                 j: 0,
-                k: s.len(),
+                k: s.len() - 1,
             })
         } else {
-            Err(String::from("Stemmer only supports ASCII strings"))
+            Err(String::from("Porter stemmer only supports ASCII strings"))
         }
     }
 
     fn cons(&self, i: usize) -> bool {
-        match self.buffer[i] {
+        match self.b[i] {
             b'a' | b'e' | b'i' | b'o' | b'u' => false,
-            b'y' => if i == 0 { true } else { !self.cons(i-1) },
+            b'y' => if i == 0 { true } else { !self.cons(i - 1) },
             _   => true,
         }
     }
@@ -28,16 +32,17 @@ impl Stemmer {
     fn measure(&self) -> usize {
         let mut n = 0;
         let mut i = 0;
-        let mut next = (i..self.j).find(|&i| !self.cons(i));
+        let j = self.j;
+        let mut next = (i..j).find(|&i| !self.cons(i));
         
         while i < self.j {
             if next.is_none() { break } else { i = next.unwrap(); }
-            next = (i..self.j).find(|&i| self.cons(i));
+            next = (i..j).find(|&i| self.cons(i));
             if next.is_none() { break } else { n += 1; i = next.unwrap(); }
-            next = (i..self.j).find(|&i| !self.cons(i));
+            next = (i..j).find(|&i| !self.cons(i));
         }
 
-        return n;
+        n
     }
 
     fn contains_vowel(&self) -> bool {
@@ -45,18 +50,18 @@ impl Stemmer {
     }
 
     fn double_cons(&self) -> bool {
-        if self.k < 1 || (self.buffer[self.k] != self.buffer[self.k - 1]) {
+        if self.k < 1 || (self.b[self.k] != self.b[self.k - 1]) {
             false 
         } else {
             self.cons(self.k)
         }
     }
 
-    fn cons_v_cons(&self, i: usize) -> bool {
-        if i < 2 || !self.cons(i) || self.cons(i - 1) || self.cons(i - 2) {
+    fn cons_vowel_cons(&self, i: usize) -> bool {
+        if i < 2 || !self.cons(i) || self.cons(i - 1) || !self.cons(i - 2) {
             return false
         }
-        match self.buffer[i] {
+        match self.b[i] {
             b'w' | b'x' | b'y' => false,
             _                  => true,
         }
@@ -64,7 +69,8 @@ impl Stemmer {
 
     fn ends(&mut self, s: &str) -> bool {
         let l = s.len(); 
-        if l > self.k + 1 || !self.buffer.ends_with(s.as_bytes()) {
+        let b = s.as_bytes();
+        if l > self.k || &self.b[self.k - l + 1..self.k + 1] != b {
             false 
         } else {
             self.j = self.k - l; 
@@ -74,27 +80,28 @@ impl Stemmer {
 
     fn set(&mut self, s: &str) {
         let l = s.len();
-        let r = (self.j + 1)..(self.buffer.len());
-        self.buffer.splice(r, s.bytes());
+        let r = (self.j + 1)..(self.b.len());
+        self.b.splice(r, s.bytes());
         self.k = self.j + l;
     }
 
     fn replace(&mut self, s: &str) {
-        if self.measure() > 0 {
-            self.set(s);
-        }
+        if self.measure() > 0 { self.set(s) }
     }
 
     fn step_1ab(&mut self) {
 
-        if self.buffer[self.k] == b's' {
-            if self.ends("sses") { self.k -= 2; }
-            else if self.ends("ies") { self.set("i") }
-            else if self.buffer[self.k - 1] != b's' { self.k -= 1; }
+        if self.b[self.k] == b's' {
+            if      self.ends("sses")          { self.k -= 2   }
+            else if self.ends("ies")           { self.set("i") }
+            else if self.b[self.k - 1] != b's' { self.k -= 1   }
         }
 
-        if self.ends("eed") { if self.measure() > 0 { self.k -= 1; } }
-        else if (self.ends("ed") || self.ends("ing")) && self.contains_vowel() {
+        if self.ends("eed") {
+            if self.measure() > 0 {
+                self.k -= 1
+            }
+        } else if (self.ends("ed") || self.ends("ing")) && self.contains_vowel() {
             self.k = self.j;
 
             if      self.ends("at") { self.set("ate") }
@@ -102,12 +109,12 @@ impl Stemmer {
             else if self.ends("iz") { self.set("ize") }
             else if self.double_cons() {
                 self.k -= 1; 
-                match self.buffer[self.k] {
+                match self.b[self.k] {
                     b'l' | b's' | b'z' => self.k += 1,
                     _                  => (),
                 }
             }
-            else if self.measure() == 1 && self.cons_v_cons(self.k) {
+            else if self.measure() == 1 && self.cons_vowel_cons(self.k) {
                 self.set("e")
             }
         }
@@ -115,12 +122,12 @@ impl Stemmer {
 
     fn step_1c(&mut self) {
         if self.ends("y") && self.contains_vowel() {
-            self.buffer[self.k] = b'i';
+            self.b[self.k] = b'i';
         }
     }
 
     fn step_2(&mut self) {
-        match self.buffer[self.k - 1] {
+        match self.b[self.k - 1] {
             b'a' => if      self.ends("ational") { self.replace("ate")  }
                     else if self.ends("tional")  { self.replace("tion") },
             b'c' => if      self.ends("enci")    { self.replace("ence") }
@@ -147,7 +154,7 @@ impl Stemmer {
     }
     
     fn step_3(&mut self) {
-        match self.buffer[self.k] {
+        match self.b[self.k] {
             b'e' => if      self.ends("icate") { self.replace("ic") }
                     else if self.ends("ative") { self.replace("")   }
                     else if self.ends("alize") { self.replace("al") },
@@ -160,52 +167,51 @@ impl Stemmer {
     }
 
     fn step_4(&mut self) {
-        match self.buffer[self.k - 1] {
-            b'a' => if !(self.ends("al"))              { return },
+        match self.b[self.k - 1] {
+            b'a' => if !(self.ends("al"))         { return },
             b'c' => if !(self.ends("ance")
-                    ||   self.ends("ence"))            { return },
-            b'e' => if !(self.ends("er"))              { return },
-            b'i' => if !(self.ends("ic"))              { return },
+                    ||   self.ends("ence"))       { return },
+            b'e' => if !(self.ends("er"))         { return },
+            b'i' => if !(self.ends("ic"))         { return },
             b'l' => if !(self.ends("able")
-                    ||   self.ends("ible"))            { return },
+                    ||   self.ends("ible"))       { return },
             b'n' => if !(self.ends("ant")
                     ||   self.ends("ement") 
                     ||   self.ends("ment")
-                    ||   self.ends("ent"))             { return },
+                    ||   self.ends("ent"))        { return },
             b'o' => if !((self.ends("ion")
-                    // &&   self.j >= 0 Can j ever be < 0?
-                    &&  (self.buffer[self.j] == b's'
-                    ||   self.buffer[self.j] == b't'))
-                    ||   self.ends("ou"))              { return },
-            b's' => if !(self.ends("ism"))             { return },
+                    &&  (self.b[self.j] == b's'
+                    ||   self.b[self.j] == b't'))
+                    ||   self.ends("ou"))         { return },
+            b's' => if !(self.ends("ism"))        { return },
             b't' => if !(self.ends("ate")
-                    ||   self.ends("iti"))             { return },
-            b'u' => if !(self.ends("ous"))             { return },
-            b'v' => if !(self.ends("ive"))             { return },
-            b'z' => if !(self.ends("ize"))             { return },
+                    ||   self.ends("iti"))        { return },
+            b'u' => if !(self.ends("ous"))        { return },
+            b'v' => if !(self.ends("ive"))        { return },
+            b'z' => if !(self.ends("ize"))        { return },
             _    => return,
         }
-        if self.measure() > 1 { self.k = self.j; }
+        if self.measure() > 1 { self.k = self.j }
     }
 
     fn step_5(&mut self) {
         self.j = self.k; 
         
-        if self.buffer[self.k] == b'e' {
+        if self.b[self.k] == b'e' {
             let m = self.measure(); 
-            if m > 1 || m == 1 && !self.cons_v_cons(self.k - 1) { 
-                self.k -= 1; 
+            if m > 1 || m == 1 && !self.cons_vowel_cons(self.k - 1) { 
+                self.k -= 1;
             }
         }
 
-        if self.buffer[self.k] == b'l' && self.double_cons() && self.measure() > 1 {
+        if self.b[self.k] == b'l' && self.double_cons() && self.measure() > 1 {
             self.k -= 1; 
         }
     }
 
-    pub fn stem(mut self) -> String {
-        let buffer = if self.k <= 1 {
-            self.buffer
+    fn execute(mut self) -> String {
+        let b = if self.k <= 1 {
+            self.b
         } else {
             self.step_1ab(); 
             if self.k > 0 {
@@ -215,8 +221,26 @@ impl Stemmer {
                 self.step_4();
                 self.step_5();
             }
-            self.buffer
+            self.b[0..self.k+1].to_vec()
         };
-        String::from_utf8(buffer).unwrap()
+        unsafe {
+            String::from_utf8_unchecked(b)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use ::stem::porter::Porter;
+
+    #[test]
+    fn basic() {
+        // let mut s = "Testing".bytes().collect::<Vec<_>>();
+        // let b = "Hm";
+        // s.splice(0..1, b.bytes());
+
+        // println!("{}", String::from_utf8(s.to_ascii_lowercase()).unwrap());
+        println!("{}", Porter::stem("famousness").unwrap());
     }
 }
