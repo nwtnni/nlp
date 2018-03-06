@@ -1,4 +1,4 @@
-struct Porter {
+pub struct Porter {
     j: usize,
     k: usize,
     b: Vec<u8>,
@@ -32,10 +32,10 @@ impl Porter {
     fn measure(&self) -> usize {
         let mut n = 0;
         let mut i = 0;
-        let j = self.j;
+        let j = self.j + 1;
         let mut next = (i..j).find(|&i| !self.cons(i));
         
-        while i < self.j {
+        while i < j {
             if next.is_none() { break } else { i = next.unwrap(); }
             next = (i..j).find(|&i| self.cons(i));
             if next.is_none() { break } else { n += 1; i = next.unwrap(); }
@@ -46,7 +46,7 @@ impl Porter {
     }
 
     fn contains_vowel(&self) -> bool {
-        (0..self.j).any(|i| !self.cons(i))
+        (0..self.j + 1).any(|i| !self.cons(i))
     }
 
     fn double_cons(&self) -> bool {
@@ -70,17 +70,17 @@ impl Porter {
     fn ends(&mut self, s: &str) -> bool {
         let l = s.len(); 
         let b = s.as_bytes();
-        if l > self.k || &self.b[self.k - l + 1..self.k + 1] != b {
+        if l > self.k || &self.b[self.k + 1 - l..self.k + 1] != b {
             false 
         } else {
-            self.j = self.k - l; 
+            self.j = self.k - l;
             true
         }
     }
 
     fn set(&mut self, s: &str) {
         let l = s.len();
-        let r = (self.j + 1)..(self.b.len());
+        let r = (self.j + 1)..(self.k + 1);
         self.b.splice(r, s.bytes());
         self.k = self.j + l;
     }
@@ -226,21 +226,5 @@ impl Porter {
         unsafe {
             String::from_utf8_unchecked(b)
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use ::stem::porter::Porter;
-
-    #[test]
-    fn basic() {
-        // let mut s = "Testing".bytes().collect::<Vec<_>>();
-        // let b = "Hm";
-        // s.splice(0..1, b.bytes());
-
-        // println!("{}", String::from_utf8(s.to_ascii_lowercase()).unwrap());
-        println!("{}", Porter::stem("famousness").unwrap());
     }
 }
