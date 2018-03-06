@@ -5,12 +5,15 @@ pub struct Stemmer {
 }
 
 impl Stemmer {
-
-    pub fn new(s: &str) -> Self {
-        Stemmer {
-            buffer: String::from(s).into_bytes(),
-            j: 0,
-            k: s.len(),
+    pub fn new(s: &str) -> Result<Self, String> {
+        if s.is_ascii() {
+            Ok(Stemmer {
+                buffer: s.to_lowercase().into_bytes(),
+                j: 0,
+                k: s.len(),
+            })
+        } else {
+            Err(String::from("Stemmer only supports ASCII strings"))
         }
     }
 
@@ -82,11 +85,11 @@ impl Stemmer {
         }
     }
 
-    fn step1ab(&mut self) {
+    fn step_1ab(&mut self) {
 
         if self.buffer[self.k] == b's' {
             if self.ends("sses") { self.k -= 2; }
-            else if self.ends("ies") { self.set("i"); }
+            else if self.ends("ies") { self.set("i") }
             else if self.buffer[self.k - 1] != b's' { self.k -= 1; }
         }
 
@@ -94,9 +97,9 @@ impl Stemmer {
         else if (self.ends("ed") || self.ends("ing")) && self.contains_vowel() {
             self.k = self.j;
 
-            if self.ends("at") { self.set("ate"); }
-            else if self.ends("bl") { self.set("ble"); }
-            else if self.ends("iz") { self.set("ize"); }
+            if      self.ends("at") { self.set("ate") }
+            else if self.ends("bl") { self.set("ble") }
+            else if self.ends("iz") { self.set("ize") }
             else if self.double_cons() {
                 self.k -= 1; 
                 match self.buffer[self.k] {
@@ -105,12 +108,115 @@ impl Stemmer {
                 }
             }
             else if self.measure() == 1 && self.cons_v_cons(self.k) {
-                self.set("e");
+                self.set("e")
             }
         }
     }
 
-    pub fn stem(self) -> String {
-        return String::from(""); 
+    fn step_1c(&mut self) {
+        if self.ends("y") && self.contains_vowel() {
+            self.buffer[self.k] = b'i';
+        }
+    }
+
+    fn step_2(&mut self) {
+        match self.buffer[self.k - 1] {
+            b'a' => if      self.ends("ational") { self.replace("ate")  }
+                    else if self.ends("tional")  { self.replace("tion") },
+            b'c' => if      self.ends("enci")    { self.replace("ence") }
+                    else if self.ends("anci")    { self.replace("ance") },
+            b'e' => if      self.ends("izer")    { self.replace("ize")  },
+            b'l' => if      self.ends("bli")     { self.replace("ble")  }
+                    else if self.ends("alli")    { self.replace("al")   }
+                    else if self.ends("entli")   { self.replace("ent")  }
+                    else if self.ends("eli")     { self.replace("e")    }
+                    else if self.ends("ousli")   { self.replace("ous")  },
+            b'o' => if      self.ends("ization") { self.replace("ize")  }
+                    else if self.ends("ation")   { self.replace("ate")  }
+                    else if self.ends("ator")    { self.replace("ate")  },
+            b's' => if      self.ends("alism")   { self.replace("al")   }
+                    else if self.ends("iveness") { self.replace("ive")  }
+                    else if self.ends("fulness") { self.replace("ful")  }
+                    else if self.ends("ousness") { self.replace("ous")  },
+            b't' => if      self.ends("aliti")   { self.replace("al")   }
+                    else if self.ends("iviti")   { self.replace("ive")  }
+                    else if self.ends("biliti")  { self.replace("ble")  },
+            b'g' => if      self.ends("logi")    { self.replace("log")  },
+            _ => (),
+        }
+    }
+    
+    fn step_3(&mut self) {
+        match self.buffer[self.k] {
+            b'e' => if      self.ends("icate") { self.replace("ic") }
+                    else if self.ends("ative") { self.replace("")   }
+                    else if self.ends("alize") { self.replace("al") },
+            b'i' => if      self.ends("iciti") { self.replace("ic") },
+            b'l' => if      self.ends("ical")  { self.replace("ic") }
+                    else if self.ends("ful")   { self.replace("")   },
+            b's' => if      self.ends("ness")  { self.replace("")   },
+            _    => (),
+        }
+    }
+
+    fn step_4(&mut self) {
+        match self.buffer[self.k - 1] {
+            b'a' => if !(self.ends("al"))              { return },
+            b'c' => if !(self.ends("ance")
+                    ||   self.ends("ence"))            { return },
+            b'e' => if !(self.ends("er"))              { return },
+            b'i' => if !(self.ends("ic"))              { return },
+            b'l' => if !(self.ends("able")
+                    ||   self.ends("ible"))            { return },
+            b'n' => if !(self.ends("ant")
+                    ||   self.ends("ement") 
+                    ||   self.ends("ment")
+                    ||   self.ends("ent"))             { return },
+            b'o' => if !((self.ends("ion")
+                    // &&   self.j >= 0 Can j ever be < 0?
+                    &&  (self.buffer[self.j] == b's'
+                    ||   self.buffer[self.j] == b't'))
+                    ||   self.ends("ou"))              { return },
+            b's' => if !(self.ends("ism"))             { return },
+            b't' => if !(self.ends("ate")
+                    ||   self.ends("iti"))             { return },
+            b'u' => if !(self.ends("ous"))             { return },
+            b'v' => if !(self.ends("ive"))             { return },
+            b'z' => if !(self.ends("ize"))             { return },
+            _    => return,
+        }
+        if self.measure() > 1 { self.k = self.j; }
+    }
+
+    fn step_5(&mut self) {
+        self.j = self.k; 
+        
+        if self.buffer[self.k] == b'e' {
+            let m = self.measure(); 
+            if m > 1 || m == 1 && !self.cons_v_cons(self.k - 1) { 
+                self.k -= 1; 
+            }
+        }
+
+        if self.buffer[self.k] == b'l' && self.double_cons() && self.measure() > 1 {
+            self.k -= 1; 
+        }
+    }
+
+    pub fn stem(mut self) -> String {
+        let buffer = if self.k <= 1 {
+            self.buffer
+        } else {
+            self.step_1ab(); 
+            if self.k > 0 {
+                self.step_1c(); 
+                self.step_2();
+                self.step_3();
+                self.step_4();
+                self.step_5();
+            }
+            self.buffer
+        };
+        String::from_utf8(buffer).unwrap()
     }
 }
