@@ -1,5 +1,3 @@
-use regex::Regex;
-
 pub struct Stemmer {
     j: usize,
     k: usize,
@@ -43,11 +41,11 @@ impl Stemmer {
         (0..self.j).any(|i| !self.cons(i))
     }
 
-    fn double_cons(&self, i: usize) -> bool {
-        if i < 1 || (self.buffer[i] != self.buffer[i - 1]) {
+    fn double_cons(&self) -> bool {
+        if self.k < 1 || (self.buffer[self.k] != self.buffer[self.k - 1]) {
             false 
         } else {
-            self.cons(i)
+            self.cons(self.k)
         }
     }
 
@@ -61,9 +59,9 @@ impl Stemmer {
         }
     }
 
-    fn ends(&mut self, s: &[u8]) -> bool {
+    fn ends(&mut self, s: &str) -> bool {
         let l = s.len(); 
-        if s[l] != self.buffer[self.k] || l > self.k + 1 || !self.buffer.ends_with(s) {
+        if l > self.k + 1 || !self.buffer.ends_with(s.as_bytes()) {
             false 
         } else {
             self.j = self.k - l; 
@@ -71,21 +69,48 @@ impl Stemmer {
         }
     }
 
-    fn set(&mut self, s: &[u8]) {
+    fn set(&mut self, s: &str) {
         let l = s.len();
         let r = (self.j + 1)..(self.buffer.len());
-        self.buffer.splice(r, s.iter().cloned());
+        self.buffer.splice(r, s.bytes());
         self.k = self.j + l;
     }
 
-    fn replace(&mut self, s: &[u8]) {
+    fn replace(&mut self, s: &str) {
         if self.measure() > 0 {
             self.set(s);
         }
     }
 
+    fn step1ab(&mut self) {
+
+        if self.buffer[self.k] == b's' {
+            if self.ends("sses") { self.k -= 2; }
+            else if self.ends("ies") { self.set("i"); }
+            else if self.buffer[self.k - 1] != b's' { self.k -= 1; }
+        }
+
+        if self.ends("eed") { if self.measure() > 0 { self.k -= 1; } }
+        else if (self.ends("ed") || self.ends("ing")) && self.contains_vowel() {
+            self.k = self.j;
+
+            if self.ends("at") { self.set("ate"); }
+            else if self.ends("bl") { self.set("ble"); }
+            else if self.ends("iz") { self.set("ize"); }
+            else if self.double_cons() {
+                self.k -= 1; 
+                match self.buffer[self.k] {
+                    b'l' | b's' | b'z' => self.k += 1,
+                    _                  => (),
+                }
+            }
+            else if self.measure() == 1 && self.cons_v_cons(self.k) {
+                self.set("e");
+            }
+        }
+    }
+
     pub fn stem(self) -> String {
         return String::from(""); 
-
     }
 }
